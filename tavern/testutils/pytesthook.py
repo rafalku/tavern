@@ -1,6 +1,9 @@
 import re
 import logging
 import pytest
+from _pytest import fixtures
+from _pytest.mark import MarkInfo, Mark
+
 import yaml
 from future.utils import raise_from
 
@@ -104,11 +107,41 @@ class YamlItem(pytest.Item):
         super(YamlItem, self).__init__(name, parent)
         self.path = path
         self.spec = spec
+        self.fixture_spec = {}
+        self.fixture_data = {}
+        self._init_fixtures()
 
         class FakeObj(object):
             __doc__ = name
 
         self.obj = FakeObj
+
+    def _init_fixtures(self):
+        pytest_spec = self.spec.pop('pytest', None)
+        if pytest_spec:
+            pytest_fixtures = pytest_spec.get('fixtures')
+            if pytest_fixtures:
+                self.fixture_spec = pytest_fixtures
+
+        self.cls = None
+        self.obj = object()
+        self.funcargs = {}
+        self.usefixtures = MarkInfo(
+            Mark(name='usefixtures',
+                 args=tuple(self.fixture_spec.values()),
+                 kwargs={})
+        )
+        self._fixtureinfo = self.session._fixturemanager.getfixtureinfo(
+            self.parent, self, self.cls, funcargs=False)
+        self._request = fixtures.FixtureRequest(self)
+
+    def setup(self):
+        super(YamlItem, self).setup()
+        fixtures.fillfixtures(self)
+        self.fixture_data = {
+            name: self.funcargs[fixture]
+            for name, fixture in self.fixture_spec.items()
+        }
 
     def runtest(self):
         verify_tests(self.spec)
@@ -120,6 +153,8 @@ class YamlItem(pytest.Item):
 
         all_paths = ini_global_cfg_paths + cmdline_global_cfg_paths
         global_cfg = load_global_config(all_paths)
+
+        global_cfg.setdefault('variables', {}).update(self.fixture_data)
 
         run_test(self.path, self.spec, global_cfg)
 
