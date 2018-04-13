@@ -63,7 +63,7 @@ SETUP_REQUIRES = [
 
 
 setup(
-    name="tavern",
+    name="tavern-extended",
 
     setup_requires=SETUP_REQUIRES,
 
